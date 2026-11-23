@@ -21,9 +21,21 @@ Add-Type -Namespace PmGuard -Name Win -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 '@
 
+$MySession = (Get-Process -Id $PID).SessionId
+
 function Test-ScreenLocked {
-    # LogonUI runs while the session is locked or at the sign-in screen.
-    return [bool](Get-Process -Name LogonUI -ErrorAction SilentlyContinue)
+    # LogonUI runs in THIS session while it is locked. On a VPS another session
+    # (the console) may sit at the sign-in screen, so only look at our own session.
+    return [bool](Get-Process -Name LogonUI -ErrorAction SilentlyContinue |
+        Where-Object { $_.SessionId -eq $MySession })
+}
+
+function Test-RdpDisconnected {
+    # RDP closed with the X button: session state "Disc", desktop no longer drawn.
+    $query = Join-Path $env:WINDIR 'System32\query.exe'
+    if (-not (Test-Path $query)) { return $false }
+    $line = & $query session 2>$null | Where-Object { $_ -match "\s$MySession\s" } | Select-Object -First 1
+    return [bool]($line -and $line -match "\s$MySession\s+Disc")
 }
 
 function Restore-LineWindow {
@@ -49,6 +61,8 @@ function Test-Disk {
 try {
     if (Test-ScreenLocked) {
         Invoke-Helper @('alert', 'locked')
+    } elseif (Test-RdpDisconnected) {
+        Invoke-Helper @('alert', 'rdp_disconnected')
     } else {
         Restore-LineWindow
     }

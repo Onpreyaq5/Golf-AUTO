@@ -20,11 +20,14 @@ import urllib.request
 from contextlib import closing
 
 BACKUP_KEEP = 7
+PMGOLF_KEY_FILE = pathlib.Path.home() / ".pmgolf" / "telegram.json"
 DEFAULT_THROTTLE_SEC = 3600
 DAILY_SEC = 86400
 
 MESSAGES = {
     "locked": "⚠️ เครื่องบอทถูกล็อกหน้าจอ บอทอ่าน LINE และเซฟรูปไม่ได้ ต้องปลดล็อกเครื่อง",
+    "rdp_disconnected": "⚠️ VPS: ปิด Remote Desktop ด้วยปุ่ม X ทำให้จอล็อก บอทอ่าน LINE ไม่ได้\n"
+                        "แก้: RDP เข้าไปใหม่ แล้วออกด้วยปุ่ม 'ออกจาก RDP แบบจอไม่ล็อก'",
     "disk": "⚠️ ดิสก์เครื่องบอทใกล้เต็ม",
     "line_missing": "⚠️ ไม่เจอโปรแกรม LINE เปิดอยู่บนเครื่องบอท",
     "skipped": "⚠️ มีรายการถูกข้าม (SKIPPED) เพิ่มขึ้น อาจเพราะค้างคิวเกิน 72 ชม. ตรวจด้วย 03 ดูสถานะบอท",
@@ -77,15 +80,25 @@ class Guard:
         except OSError:
             return ""
 
-    def send_telegram(self, text: str) -> bool:
+    def telegram_target(self) -> tuple[str, str] | None:
+        """Prefer %USERPROFILE%\\.pmgolf\\telegram.json (report group), else bot config.toml."""
+        try:
+            data = json.loads(PMGOLF_KEY_FILE.read_text(encoding="utf-8"))
+            if data.get("bot_token") and data.get("chat_id"):
+                return str(data["bot_token"]), str(data["chat_id"])
+        except (OSError, ValueError):
+            pass
         cfg = self.config_text()
-        token = TOKEN_RE.search(cfg)
-        chat = CHAT_RE.search(cfg)
-        if not token or not chat:
-            self.log("telegram: token/chat_id not found in config.toml, alert only logged")
+        token, chat = TOKEN_RE.search(cfg), CHAT_RE.search(cfg)
+        return (token.group(1), chat.group(1)) if token and chat else None
+
+    def send_telegram(self, text: str) -> bool:
+        target = self.telegram_target()
+        if target is None:
+            self.log("telegram: no token/chat_id (telegram.json or config.toml), alert only logged")
             return False
-        url = f"https://api.telegram.org/bot{token.group(1)}/sendMessage"
-        data = urllib.parse.urlencode({"chat_id": chat.group(1), "text": text}).encode()
+        url = f"https://api.telegram.org/bot{target[0]}/sendMessage"
+        data = urllib.parse.urlencode({"chat_id": target[1], "text": text}).encode()
         try:
             with urllib.request.urlopen(url, data=data, timeout=20) as resp:
                 return resp.status == 200
