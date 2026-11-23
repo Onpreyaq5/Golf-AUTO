@@ -1,0 +1,45 @@
+@echo off
+chcp 65001 <nul >nul
+setlocal EnableExtensions
+set "BOT=%USERPROFILE%\Desktop\ระบบบอท โพสต์ไม้กอล์ฟอัตโนมัติ"
+set "PY=%BOT%\venv\Scripts\python.exe"
+set "PYTHONIOENCODING=utf-8"
+if not exist "%PY%" goto :nobot
+cd /d "%BOT%\app"
+title ข้ามรายการ
+echo ==================================================
+echo   ข้ามรายการ
+echo ==================================================
+echo ไม่โพสต์รายการนี้ บอทจะข้ามไปเลย
+echo.
+"%PY%" -m pmbot status -n 15 <nul
+echo.
+set "ID="
+set /p "ID=พิมพ์เลขรายการ ตัวเลขหลัง # แล้วกด Enter ว่างไว้ = ยกเลิก: "
+if not defined ID goto :cancel
+for /f "delims=0123456789" %%a in ("%ID%") do goto :badnum
+"%PY%" -m pmbot skip %ID%
+
+:done
+echo.
+echo ---- เสร็จแล้ว กดปุ่มใดก็ได้เพื่อปิดหน้าต่างนี้ ----
+pause >nul
+exit /b 0
+
+:cancel
+echo.
+echo ยกเลิกแล้ว ไม่ได้ทำอะไร
+pause
+exit /b 0
+
+:badnum
+echo.
+echo พิมพ์ได้เฉพาะตัวเลข ลองใหม่อีกครั้ง
+pause
+exit /b 1
+
+:nobot
+echo ไม่เจอระบบบอทที่ %BOT%
+echo อย่าย้ายหรือเปลี่ยนชื่อโฟลเดอร์ "ระบบบอท โพสต์ไม้กอล์ฟอัตโนมัติ" บน Desktop
+pause
+exit /b 1
