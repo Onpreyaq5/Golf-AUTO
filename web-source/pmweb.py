@@ -10,7 +10,7 @@ CLI:
   python pmweb.py fetch <id>                      -> product as JSON
   python pmweb.py scan <since_id> [--lookahead N] -> {ready, pending, last_id}
   python pmweb.py recheck <id> [<id> ...]         -> pending ids that became ready
-Ready = price > 0฿ and has photos (0฿ means not ready for sale yet).
+Ready = not sold, price > 0฿ and has photos (0฿ means not ready for sale yet).
   python pmweb.py download <id> <out_dir>         -> save all full-size photos
 """
 from __future__ import annotations
@@ -49,6 +49,11 @@ NAME_RE = re.compile(r'<h1 class="view">(.*?)</h1>', re.S)
 IMAGE_RE = re.compile(r'data-zoom-image="([^"]+)"')
 BLOCK_END_RE = re.compile(r"<(br|/p|/div|/li|/h\d|/tr|/td)\b[^>]*>", re.I)
 TAG_RE = re.compile(r"<[^>]+>")
+# sale items show "ราคาพิเศษ" with the selling price and the struck-out old price
+SALE_RE = re.compile(r'<span class="price_sale">\s*([\d,]+\s*฿)\s*</span>\s*'
+                     r'(?:<span class="price_normal"[^>]*>\s*([\d,]+\s*฿)\s*</span>)?')
+PRICE_TEXT_RE = re.compile(r"(\d[\d,]*)(?:\.\d+)?\s*฿?")
+SOLD_MARK = "/image/new/sold_out.png"
 RELATED_MARK = "สินค้าเกี่ยวข้อง"
 PHP_ERROR_MARK = "PHP Error"
 MAX_NAME_LEN = 300
@@ -66,18 +71,20 @@ class Product:
     condition: str
     details: tuple[str, ...]
     images: tuple[str, ...]
+    old_price: str = ""     # struck-out price when the item is on sale
+    sold: bool = False
 
     @property
     def price_baht(self) -> int:
-        """'2,500฿' -> 2500; missing or unparsable price -> 0."""
-        digits = re.sub(r"[^\d]", "", self.price.split(".")[0])
-        return int(digits) if digits else 0
+        """'2,500฿' -> 2500; anything but one clear amount -> 0 (never guess)."""
+        match = PRICE_TEXT_RE.fullmatch(self.price.strip())
+        return int(match.group(1).replace(",", "")) if match else 0
 
     @property
     def is_ready(self) -> bool:
-        """Ready to post: has a real price and at least one photo.
+        """Ready to post: not sold, has a real price and at least one photo.
         A price of 0฿ / no price means the product is not ready for sale yet."""
-        return self.price_baht > 0 and bool(self.images)
+        return not self.sold and self.price_baht > 0 and bool(self.images)
 
 
 @dataclass(frozen=True)
@@ -85,6 +92,7 @@ class ScanResult:
     ready: tuple[Product, ...]      # post these
     pending: tuple[int, ...]        # exist but not ready yet: recheck later
     last_id: int                    # next scan continues after this id
+    sold: tuple[int, ...] = ()      # already sold: nothing left to do
 
 
 class FetchError(RuntimeError):
@@ -132,10 +140,17 @@ def parse_product(page: str, product_id: int) -> Product | None:
             details = lines[i + 1:]
             break
 
+    old_price = ""
+    sale = SALE_RE.search(main)
+    if sale:
+        fields["price"], old_price = sale.group(1), sale.group(2) or ""
+
     return Product(
         product_id=product_id,
         url=product_url(product_id),
         name=name,
+        old_price=old_price,
+        sold=SOLD_MARK in main,
         details=tuple(details),
         images=images,
         **fields,
@@ -164,10 +179,13 @@ def fetch_product(product_id: int) -> Product | None:
     return parse_product(page, product_id)
 
 
-def _split(products: list[Product]) -> tuple[tuple[Product, ...], tuple[int, ...]]:
-    ready = tuple(p for p in products if p.is_ready)
-    pending = tuple(p.product_id for p in products if not p.is_ready)
-    return ready, pending
+def _result(products: list[Product], last_id: int) -> ScanResult:
+    return ScanResult(
+        ready=tuple(p for p in products if p.is_ready),
+        pending=tuple(p.product_id for p in products if not p.is_ready and not p.sold),
+        last_id=last_id,
+        sold=tuple(p.product_id for p in products if p.sold),
+    )
 
 
 def scan_new(since_id: int, lookahead: int = DEFAULT_LOOKAHEAD, max_ids: int = MAX_SCAN_IDS) -> ScanResult:
@@ -188,20 +206,18 @@ def scan_new(since_id: int, lookahead: int = DEFAULT_LOOKAHEAD, max_ids: int = M
             last_id = product_id
             found.append(product)
         time.sleep(REQUEST_GAP_SEC)
-    ready, pending = _split(found)
-    return ScanResult(ready=ready, pending=pending, last_id=last_id)
+    return _result(found, last_id)
 
 
 def recheck(product_ids: list[int]) -> ScanResult:
-    """Re-fetch pending ids. Deleted ones are dropped; still-not-ready stay pending."""
+    """Re-fetch pending ids. Deleted and sold ones are dropped; still-not-ready stay pending."""
     found: list[Product] = []
     for product_id in product_ids:
         product = fetch_product(product_id)
         if product is not None:
             found.append(product)
         time.sleep(REQUEST_GAP_SEC)
-    ready, pending = _split(found)
-    return ScanResult(ready=ready, pending=pending, last_id=max(product_ids, default=0))
+    return _result(found, max(product_ids, default=0))
 
 
 def download_images(product: Product, out_dir: pathlib.Path) -> list[pathlib.Path]:
@@ -253,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
             print(_to_json({
                 "ready": [asdict(p) for p in result.ready],
                 "pending": list(result.pending),
+                "sold": list(result.sold),
                 "last_id": result.last_id,
             }))
             return 0
