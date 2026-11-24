@@ -140,19 +140,22 @@ def check_logs(bot: pathlib.Path, since: float) -> list[Finding]:
             for c, n in hits.most_common()]
 
 
-def _run(cmd: list[str]) -> str:
+def _run(cmd: list[str]) -> str | None:
+    """Command output, or None when the command could not run or failed."""
     try:
-        return subprocess.run(cmd, capture_output=True, timeout=60, check=False).stdout.decode(
-            "utf-8", errors="replace")
+        done = subprocess.run(cmd, capture_output=True, timeout=60, check=False)
     except (OSError, subprocess.SubprocessError):
-        return ""
+        return None
+    return done.stdout.decode("utf-8", errors="replace") if done.returncode == 0 else None
 
 
 def check_power() -> list[Finding]:
     ms = LOOKBACK_HOURS * 3600 * 1000
     query = f"*[System[(EventID=41 or EventID=6008) and TimeCreated[timediff(@SystemTime) <= {ms}]]]"
     out = _run(["wevtutil", "qe", "System", f"/q:{query}", "/c:10", "/f:text"])
-    n = out.count("Event ID:") or out.count("Event[")
+    if out is None:
+        return [Finding("ไฟ/เครื่อง", WARN, "อ่าน Event Log ไม่ได้ ไม่รู้ว่าเครื่องดับหรือไม่", "other_error")]
+    n = out.count("Event[")
     if n:
         return [Finding("ไฟ/เครื่อง", FAIL, f"เครื่องดับหรือรีสตาร์ตไม่ปกติ {n} ครั้ง", "power")]
     return [_ok("ไฟ/เครื่อง", "ไม่มีเครื่องดับผิดปกติ")]
@@ -162,7 +165,7 @@ def check_tasks() -> list[Finding]:
     out: list[Finding] = []
     for name in TASK_NAMES:
         text = _run(["schtasks", "/query", "/tn", name, "/v", "/fo", "csv"])
-        rows = list(csv.reader(io.StringIO(text)))
+        rows = list(csv.reader(io.StringIO(text or "")))
         if len(rows) < 2:
             out.append(Finding(f"งาน {name}", WARN, "ไม่มีใน Task Scheduler", "task_missing"))
             continue

@@ -43,7 +43,7 @@ if ($isServer) {
 
 Set-Step 'RDP: never end or reset a disconnected session' {
     $k = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
-    New-Item -Path $k -Force | Out-Null
+    if (-not (Test-Path $k)) { New-Item -Path $k -Force | Out-Null }  # -Force on an existing key wipes it
     foreach ($n in 'MaxDisconnectionTime', 'MaxIdleTime', 'MaxConnectionTime') {
         New-ItemProperty $k -Name $n -Value 0 -PropertyType DWord -Force | Out-Null
     }
@@ -51,7 +51,7 @@ Set-Step 'RDP: never end or reset a disconnected session' {
 }
 Set-Step 'Windows Update: no automatic reboot while user is logged on' {
     $k = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU'
-    New-Item -Path $k -Force | Out-Null
+    if (-not (Test-Path $k)) { New-Item -Path $k -Force | Out-Null }  # -Force on an existing key wipes it
     New-ItemProperty $k -Name NoAutoRebootWithLoggedOnUsers -Value 1 -PropertyType DWord -Force | Out-Null
 }
 Set-Step 'Microsoft Edge installed' {
@@ -78,4 +78,4 @@ Write-Host '--- Still to do by hand on the VPS ---'
 Write-Host '1) Auto-logon: Sysinternals Autologon, type the VPS password yourself, Enable.'
 Write-Host '2) Log in to LINE PC (use a separate LINE account for the bot) and open the OpenChat room.'
 Write-Host '3) Log in to Facebook once in the bot Edge profile (button: login FB again), pass any checks.'
-Write-Host '4) Leave RDP ONLY with the button "ออกจาก RDP แบบจอไม่ล็อก", never with the X button.'
+Write-Host '4) Leave RDP ONLY with the RDP-exit .bat in this folder, never with the X button.'
