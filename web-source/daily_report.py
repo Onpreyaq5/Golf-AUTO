@@ -37,6 +37,7 @@ HEARTBEAT_MAX_AGE_MIN = 20
 DISK_MIN_GB = 2.0
 LOOKBACK_HOURS = 24
 TASK_NAMES = ("PMGolfBot", "PMGolfBot-Watchdog", "PMGolfBot-WeeklyReboot", "PMGolfBot-Guard")
+STATE_COLUMNS = ("state", "status")  # pmbot.db uses "state"
 ERROR_RE = re.compile(r"\b(ERROR|CRITICAL|Traceback|Exception)\b")
 
 OK, WARN, FAIL = "OK", "WARN", "FAIL"
@@ -105,12 +106,18 @@ def check_queue(bot: pathlib.Path) -> list[Finding]:
     if not db.exists():
         return [Finding("คิวโพสต์", WARN, "ไม่เจอ data\\pmbot.db", "bot_missing")] if bot.exists() else []
     counts: Counter[str] = Counter()
+    readable = False
     with closing(sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True, timeout=30)) as con:
         for (table,) in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
             cols = [r[1] for r in con.execute(f'PRAGMA table_info("{table}")')]
-            if "status" in cols:
-                for status, n in con.execute(f'SELECT upper(status), COUNT(*) FROM "{table}" GROUP BY 1'):
-                    counts[str(status)] += n
+            column = next((c for c in STATE_COLUMNS if c in cols), None)
+            if column is None or table != "items":
+                continue
+            readable = True
+            for status, n in con.execute(f'SELECT upper("{column}"), COUNT(*) FROM "{table}" GROUP BY 1'):
+                counts[str(status)] += n
+    if not readable:
+        return [Finding("คิวโพสต์", WARN, "อ่านสถานะคิวจาก pmbot.db ไม่ได้", "other_error")]
     summary = ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) or "ว่าง"
     out = [_ok("คิวโพสต์", f"สถานะทั้งหมด: {summary}")]
     for status, key, level in (("NEEDS_HUMAN", "needs_human", FAIL), ("FAILED", "failed", WARN)):
@@ -212,7 +219,12 @@ def check_crosscheck(bot: pathlib.Path) -> list[Finding]:
     if not posts:
         return [Finding("LINE vs เว็บ", WARN, "อ่านโพสต์ LINE จากฐานข้อมูลบอทไม่ได้ (ต้องปรับชื่อคอลัมน์)",
                         "other_error")]
-    items = crosscheck.crosscheck(posts)
+
+    def polite_fetch(product_id: int) -> pmweb.Product | None:
+        time.sleep(pmweb.REQUEST_GAP_SEC)
+        return pmweb.fetch_product(product_id)
+
+    items = crosscheck.crosscheck(posts, fetch=polite_fetch)
     items = [i for i in items if i.status != crosscheck.NOT_PRODUCT]
     bad = [i for i in items if i.is_problem]
     if not bad:

@@ -24,6 +24,7 @@ PMGOLF_KEY_FILE = pathlib.Path.home() / ".pmgolf" / "telegram.json"
 DEFAULT_THROTTLE_SEC = 3600
 DAILY_SEC = 86400
 SILENT_MIN = 15  # the bot's own watchdog restarts it after 10 min; give it one try first
+STATE_COLUMNS = ("state", "status")  # pmbot.db uses "state"
 QUEUE_PROBLEMS = {"NEEDS_HUMAN": "needs_human", "FAILED": "failed"}
 
 MESSAGES = {
@@ -201,10 +202,11 @@ class Guard:
             with closing(self.ro_connect()) as con:
                 for (table,) in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
                     cols = [r[1] for r in con.execute(f'PRAGMA table_info("{table}")')]
-                    if "status" not in cols:
+                    column = next((c for c in STATE_COLUMNS if c in cols), None)
+                    if column is None or table != "items":
                         continue
                     found = True
-                    for status, n in con.execute(f'SELECT upper(status), COUNT(*) FROM "{table}" GROUP BY 1'):
+                    for status, n in con.execute(f'SELECT upper("{column}"), COUNT(*) FROM "{table}" GROUP BY 1'):
                         counts[str(status)] = counts.get(str(status), 0) + n
         except sqlite3.Error as exc:
             self.log(f"status_counts error: {exc!r}")
