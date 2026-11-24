@@ -25,7 +25,7 @@ Set-Step 'Screensaver off and does not lock' {
 }
 Set-Step 'Windows Update active hours 07:00-23:00' {
     $k = 'HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings'
-    New-Item -Path $k -Force | Out-Null
+    if (-not (Test-Path $k)) { New-Item -Path $k -Force | Out-Null }  # -Force on an existing key wipes it
     Set-ItemProperty $k -Name SmartActiveHoursState -Value 0 -Type DWord
     Set-ItemProperty $k -Name ActiveHoursStart -Value 7 -Type DWord
     Set-ItemProperty $k -Name ActiveHoursEnd -Value 23 -Type DWord

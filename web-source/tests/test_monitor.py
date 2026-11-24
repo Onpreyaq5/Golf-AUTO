@@ -140,6 +140,13 @@ def test_broken_check_does_not_kill_report() -> None:
     assert f.level == dr.WARN
 
 
+@pytest.mark.parametrize(("output", "level"), [(None, dr.WARN), ("", dr.OK), ("Event[0]:", dr.FAIL)])
+def test_power_check_never_reports_ok_when_unreadable(
+        monkeypatch: pytest.MonkeyPatch, output: str | None, level: str) -> None:
+    monkeypatch.setattr(dr, "_run", lambda _cmd: output)
+    assert dr.check_power()[0].level == level
+
+
 def test_every_fix_key_has_playbook_entry() -> None:
     for key in (*dr.LOG_COMPONENTS, "other_error"):
         assert key in dr.PLAYBOOK
