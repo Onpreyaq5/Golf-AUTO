@@ -27,8 +27,8 @@ import pmweb
 # the id ends the link; [^\s/] segments keep working when LINE drops line breaks
 LINK_RE = re.compile(r"https?://(?:www\.)?pmgolfclub\.com/product/[\w-]+/[\w-]+/(\d{5,})", re.ASCII)
 PRICE_RE = re.compile(r"ราคา\s*:?\s*([\d,]+)")
-TEXT_COLUMNS = ("text", "raw_text", "message", "body", "line_text", "content")
-PHOTO_COLUMNS = ("photo_count", "n_photos", "photos", "image_count", "num_photos")
+TEXT_COLUMNS = ("text_flat", "text", "raw_text", "message", "body", "line_text", "content")
+PHOTO_COLUMNS = ("photo_total", "photo_count", "n_photos", "photos", "image_count", "num_photos")
 SEEN_COLUMNS = ("seen_at", "line_time", "created_at", "first_seen")
 
 OK = "OK"
@@ -144,7 +144,9 @@ def posts_from_bot_db(db_path: pathlib.Path, limit: int = 500) -> list[LinePost]
     """Read LINE posts from the bot's database without knowing its exact schema."""
     uri = f"file:{db_path.as_posix()}?mode=ro"
     with closing(sqlite3.connect(uri, uri=True, timeout=30)) as con:
-        tables = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        tables = [r[0] for r in con.execute(
+            # "items" is the bot's post table; other tables (alerts) may also hold links
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name != 'items'")]
         for table in tables:
             cols = [r[1] for r in con.execute(f'PRAGMA table_info("{table}")')]
             text_col = _pick(cols, TEXT_COLUMNS)
