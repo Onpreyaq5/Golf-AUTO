@@ -43,7 +43,7 @@ def test_matching_post_is_ok() -> None:
 
 @pytest.mark.parametrize(("product", "photos", "expect"), [
     (web(price="2,900฿"), 3, "ราคาไม่ตรง"),
-    (web(n_images=5), 3, "จำนวนรูปไม่ตรง"),
+    (web(n_images=2), 3, "มากกว่า"),
     (web(name="พัตเตอร์ Odyssey White Hot"), 3, "ชื่อไม่ตรง"),
 ])
 def test_mismatches_are_reported(product: pmweb.Product, photos: int, expect: str) -> None:
@@ -54,7 +54,7 @@ def test_mismatches_are_reported(product: pmweb.Product, photos: int, expect: st
 def test_missing_and_not_ready_and_no_link() -> None:
     assert crosscheck.compare(crosscheck.LinePost(LINE_TEXT), None).status == crosscheck.NOT_ON_WEB
     assert crosscheck.compare(crosscheck.LinePost(LINE_TEXT), web(price="0฿")).status == crosscheck.NOT_READY_ON_WEB
-    assert crosscheck.compare(crosscheck.LinePost("ไม่มีลิงก์"), None).status == crosscheck.NO_LINK
+    assert crosscheck.compare(crosscheck.LinePost("ไม้\nราคา 100 บาท"), None).status == crosscheck.NO_LINK
 
 
 def test_crosscheck_reports_web_only_and_caches_fetch() -> None:
