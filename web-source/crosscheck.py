@@ -37,6 +37,7 @@ NOT_ON_WEB = "NOT_ON_WEB"
 NOT_READY_ON_WEB = "NOT_READY_ON_WEB"
 NO_LINK = "NO_LINK"
 WEB_ONLY = "WEB_ONLY"
+SOLD = "SOLD"                # sold since it was posted: not a data error
 NOT_PRODUCT = "NOT_PRODUCT"  # announcement, sticker, chat: nothing to check
 
 
@@ -78,7 +79,7 @@ class CheckItem:
 
     @property
     def is_problem(self) -> bool:
-        return self.status not in (OK, NOT_PRODUCT)
+        return self.status not in (OK, NOT_PRODUCT, SOLD)
 
 
 def _norm(text: str) -> str:
@@ -93,6 +94,8 @@ def compare(post: LinePost, product: pmweb.Product | None) -> CheckItem:
         return CheckItem(None, NO_LINK, ("โพสต์ใน LINE ไม่มีลิงก์ pmgolfclub.com",), post.name)
     if product is None:
         return CheckItem(pid, NOT_ON_WEB, ("ไม่มีสินค้านี้บนเว็บ (ถูกลบ หรือเลขในลิงก์ผิด)",), post.name)
+    if product.sold:
+        return CheckItem(pid, SOLD, ("ขายแล้ว",), post.name)
     if not product.is_ready:
         return CheckItem(pid, NOT_READY_ON_WEB, (f"บนเว็บยังไม่พร้อมขาย ราคา {product.price or 'ว่าง'}",), post.name)
 
@@ -101,7 +104,8 @@ def compare(post: LinePost, product: pmweb.Product | None) -> CheckItem:
     if _norm(post.name) != _norm(product.name):
         problems.append(f"ชื่อไม่ตรง: LINE '{post.name}' / เว็บ '{product.name}'")
     if post.price_baht and post.price_baht != product.price_baht:
-        problems.append(f"ราคาไม่ตรง: LINE {post.price_baht:,} / เว็บ {product.price_baht:,}")
+        note = " (LINE ใช้ราคาเดิมก่อนลด)" if f"{post.price_baht:,}฿" == product.old_price.replace(" ", "") else ""
+        problems.append(f"ราคาไม่ตรง: LINE {post.price_baht:,} / เว็บ {product.price_baht:,}{note}")
     if not post.price_baht:
         problems.append("โพสต์ใน LINE ไม่มีราคา")
     if post.photo_count is not None and post.photo_count < 1:

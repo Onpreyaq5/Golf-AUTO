@@ -197,9 +197,10 @@ def check_web(state: dict) -> list[Finding]:
     ready = len(result.ready) + len(rechecked.ready)
     state["web_last_id"] = result.last_id
     state["web_pending"] = list(rechecked.pending)
-    out = [_ok("เว็บ", f"เว็บปกติ สินค้าใหม่พร้อมขาย {ready} รายการ (ล่าสุด #{result.last_id})")]
+    sold = len(result.sold) + len(rechecked.sold)
+    out = [_ok("เว็บ", f"เว็บปกติ สินค้าใหม่พร้อมขาย {ready} รายการ ขายแล้ว {sold} รายการ (ล่าสุด #{result.last_id})")]
     if rechecked.pending:
-        out.append(Finding("เว็บ", WARN, f"ยังไม่พร้อมขาย (0฿) {len(rechecked.pending)} รายการ", "web_pending"))
+        out.append(Finding("เว็บ", WARN, f"ยังไม่พร้อมขาย (0฿ หรือไม่มีราคา/รูป) {len(rechecked.pending)} รายการ", "web_pending"))
     return out
 
 
