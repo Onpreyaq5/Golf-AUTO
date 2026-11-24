@@ -1,6 +1,6 @@
 # Golf bot machine guard. Runs every 5 minutes from Task Scheduler (task PMGolfBot-Guard).
 # Checks: screen locked, LINE minimized/missing, low disk, nightly DB backup,
-# new SKIPPED items, Healthchecks not configured. Alerts go out via guard_helper.py.
+# silent bot, NEEDS_HUMAN/FAILED/SKIPPED items, Healthchecks not configured. Alerts go out via guard_helper.py.
 # ASCII only on purpose: Windows PowerShell 5.1 misreads UTF-8 files without BOM.
 param([Parameter(Mandatory = $true)][string]$BotDir)
 
@@ -41,6 +41,7 @@ function Test-RdpDisconnected {
 function Restore-LineWindow {
     $line = @(Get-Process -Name LINE -ErrorAction SilentlyContinue)
     if ($line.Count -eq 0) { Invoke-Helper @('alert', 'line_missing'); return }
+    Invoke-Helper @('resolve', 'line_missing')
     foreach ($p in $line) {
         $h = $p.MainWindowHandle
         if ($h -ne [IntPtr]::Zero -and [PmGuard.Win]::IsIconic($h)) {
@@ -55,6 +56,8 @@ function Test-Disk {
     $free = (New-Object System.IO.DriveInfo($root)).AvailableFreeSpace
     if ($free -lt $MinFreeBytes) {
         Invoke-Helper @('alert', 'disk', ("free {0:N1} GB on {1}" -f ($free / 1GB), $root))
+    } else {
+        Invoke-Helper @('resolve', 'disk')
     }
 }
 
@@ -62,13 +65,16 @@ try {
     if (Test-ScreenLocked) {
         Invoke-Helper @('alert', 'locked')
     } elseif (Test-RdpDisconnected) {
+        Invoke-Helper @('resolve', 'locked')
         Invoke-Helper @('alert', 'rdp_disconnected')
     } else {
+        Invoke-Helper @('resolve', 'locked')
+        Invoke-Helper @('resolve', 'rdp_disconnected')
         Restore-LineWindow
     }
+    Invoke-Helper @('bot')      # silent bot, NEEDS_HUMAN, FAILED, SKIPPED
     Test-Disk
     Invoke-Helper @('backup')   # once per day; helper skips if today's copy exists
-    Invoke-Helper @('skipped')
     Invoke-Helper @('hc')
 } catch {
     Invoke-Helper @('log', ("guard.ps1 error: " + $_.Exception.Message))

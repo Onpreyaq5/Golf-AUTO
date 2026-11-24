@@ -86,9 +86,9 @@ def _ok(area: str, detail: str) -> Finding:
 def check_bot_alive(bot: pathlib.Path, now: float) -> list[Finding]:
     if not bot.exists():
         return [Finding("ตัวบอท", FAIL, f"ไม่เจอโฟลเดอร์ระบบบอทที่ {bot}", "bot_missing")]
-    out: list[Finding] = []
     if (bot / "run" / "disabled.flag").exists():
-        out.append(Finding("ตัวบอท", WARN, "บอทถูกสั่งปิดอยู่ (disabled.flag)", "bot_off"))
+        return [Finding("ตัวบอท", WARN, "บอทถูกสั่งปิดอยู่ (disabled.flag)", "bot_off")]
+    out: list[Finding] = []
     beat = bot / "run" / "heartbeat.json"
     if not beat.exists():
         out.append(Finding("ตัวบอท", FAIL, "ไม่มีสัญญาณชีพ heartbeat.json", "heartbeat"))
