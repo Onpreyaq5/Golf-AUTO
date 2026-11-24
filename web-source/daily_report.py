@@ -212,7 +212,8 @@ def check_crosscheck(bot: pathlib.Path) -> list[Finding]:
         return [Finding("LINE vs เว็บ", WARN, "อ่านโพสต์ LINE จากฐานข้อมูลบอทไม่ได้ (ต้องปรับชื่อคอลัมน์)",
                         "other_error")]
     items = crosscheck.crosscheck(posts)
-    bad = [i for i in items if i.status != crosscheck.OK]
+    items = [i for i in items if i.status != crosscheck.NOT_PRODUCT]
+    bad = [i for i in items if i.is_problem]
     if not bad:
         return [_ok("LINE vs เว็บ", f"ตรงกันทั้ง {len(items)} รายการ")]
     lines = "; ".join(f"#{i.product_id} {i.problems[0]}" for i in bad[:5])
